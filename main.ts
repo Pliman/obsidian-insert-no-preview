@@ -2,13 +2,11 @@ import {
   App,
   Editor,
   MarkdownView,
-  Modal,
   Notice,
   Plugin,
   PluginSettingTab,
   Setting,
   TextAreaComponent,
-  TFile,
 } from "obsidian";
 
 // Define the interface for plugin settings
@@ -43,10 +41,11 @@ export default class InsertNoPreviewPlugin extends Plugin {
   }
 
   // Event handler function
-  private handleFileInsert = (
+  private handleFileInsert = async (
+    // Make the handler async
     evt: DragEvent | ClipboardEvent,
     editor: Editor,
-    view: MarkdownView
+    view: MarkdownView // Use MarkdownView for context
   ) => {
     // Ensure the event contains files
     const files =
@@ -57,63 +56,138 @@ export default class InsertNoPreviewPlugin extends Plugin {
       return; // No files, do not process
     }
 
-    // Check if at least one file needs special handling
-    let hasFileToHandle = false;
+    // Prepare normalized extension list for checking
     const normalizedNonPreviewExtensions =
       this.settings.nonPreviewExtensions.map((ext) => ext.toLowerCase());
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+
+    // Check if at least one file needs special handling (non-preview link)
+    let hasFileToHandleManually = false;
+    const fileList = Array.from(files); // Convert FileList to Array for easier processing
+    for (const file of fileList) {
       const fileName = file.name;
-      // Extract and normalize the extension (lowercase, with dot)
       const fileExt = fileName.includes(".")
         ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase()
         : "";
       if (fileExt && normalizedNonPreviewExtensions.includes(fileExt)) {
-        hasFileToHandle = true;
+        hasFileToHandleManually = true;
         break;
       }
     }
 
-    // If no file needs special handling, allow default behavior
-    if (!hasFileToHandle) {
+    // If no file needs special handling, allow default Obsidian behavior
+    if (!hasFileToHandleManually) {
       return;
     }
 
-    // Prevent default Obsidian file handling
+    console.log(
+      "InsertNoPreview: Found matching file(s), handling insertion manually."
+    );
+
+    // Prevent default Obsidian file handling SINCE we are handling it manually
     evt.preventDefault();
     evt.stopPropagation(); // Ensure complete prevention
 
-    let linkTextToInsert = "";
-
-    // Iterate through files and generate links
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    // Process all files asynchronously
+    const linkPromises = fileList.map(async (file) => {
       const fileName = file.name;
-      // Extract and normalize the extension (lowercase, with dot)
       const fileExt = fileName.includes(".")
         ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase()
         : "";
 
-      // Check if the extension is in the non-preview list
-      if (fileExt && normalizedNonPreviewExtensions.includes(fileExt)) {
-        // Generate a normal link
-        linkTextToInsert += `[[${fileName}]]\n`;
-      } else {
-        // Generate an embed link (for files not in the list)
-        linkTextToInsert += `![[${fileName}]]\n`;
-      }
-    }
+      try {
+        // 1. Determine the available attachment path using fileManager API
+        // This handles settings (including subfolders) and potential name conflicts.
+        const sourcePath = view.file ? view.file.path : "";
+        const attachmentPath =
+          await this.app.fileManager.getAvailablePathForAttachment(
+            fileName,
+            sourcePath
+          );
+        console.log(
+          `InsertNoPreview: Determined available attachment path: ${attachmentPath}`
+        );
 
-    // Remove the trailing newline character
-    if (linkTextToInsert.endsWith("\n")) {
-      linkTextToInsert = linkTextToInsert.substring(
-        0,
-        linkTextToInsert.length - 1
-      );
-    }
+        // 2. Ensure the parent directory for the attachment path exists
+        const parentDirectory = attachmentPath.substring(
+          0,
+          attachmentPath.lastIndexOf("/")
+        );
+        if (parentDirectory && parentDirectory !== "/") {
+          // Check if it's not the root and exists
+          try {
+            // createFolder does nothing if the folder already exists.
+            await this.app.vault.createFolder(parentDirectory);
+            console.log(
+              `InsertNoPreview: Ensured parent directory exists: ${parentDirectory}`
+            );
+          } catch (err) {
+            // Log error only if it's not 'already exists'
+            if (!err.message?.toLowerCase().includes("already exists")) {
+              console.error(
+                `InsertNoPreview: Error creating parent directory ${parentDirectory}:`,
+                err
+              );
+              new Notice(
+                `Error creating attachment folder ${parentDirectory}. See console.`
+              );
+              return ""; // Bail out if folder creation fails unexpectedly
+            }
+          }
+        } else if (parentDirectory === "/") {
+          console.log(
+            "InsertNoPreview: Attachment path is in root, no folder creation needed."
+          );
+        } else {
+          console.warn(
+            "InsertNoPreview: Could not determine parent directory from path:",
+            attachmentPath
+          );
+          // Attempt to proceed assuming root or createBinary handles it? Cautious approach: return error.
+          new Notice(
+            `Could not determine parent folder for ${attachmentPath}.`
+          );
+          return "";
+        }
+
+        // 3. Read file data
+        const fileData = await file.arrayBuffer();
+
+        // 4. Save the file to the vault using the path determined by fileManager
+        // This path already accounts for potential name conflicts.
+        const savedTFile = await this.app.vault.createBinary(
+          attachmentPath,
+          fileData
+        );
+        console.log(`InsertNoPreview: Saved file to ${savedTFile.path}`);
+
+        // 5. Generate link text based on extension, using the final saved file name
+        if (fileExt && normalizedNonPreviewExtensions.includes(fileExt)) {
+          // Use .name to include the extension
+          return `[[${savedTFile.name}]]`;
+        } else {
+          // Use .name to include the extension
+          return `![[${savedTFile.name}]]`;
+        }
+      } catch (error) {
+        console.error(
+          `InsertNoPreview: Error processing file ${fileName}:`,
+          error
+        );
+        new Notice(`Error saving file ${fileName}. See console for details.`);
+        return "";
+      }
+    });
+
+    // Wait for all file processing to complete
+    const linkTexts = await Promise.all(linkPromises);
+
+    // Filter out any empty strings from errors and join with newlines
+    const combinedLinkText = linkTexts.filter((text) => text).join("\n");
 
     // Insert the generated link text at the editor's current cursor position
-    editor.replaceSelection(linkTextToInsert);
+    if (combinedLinkText) {
+      editor.replaceSelection(combinedLinkText);
+    }
   };
 
   onunload() {
@@ -144,12 +218,12 @@ class InsertNoPreviewSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "No Embed Insert Settings" });
+    containerEl.createEl("h2", { text: "Insert No Preview Settings" }); // Updated Title slightly
 
     new Setting(containerEl)
       .setName("Non-preview file extensions")
       .setDesc(
-        "Files with these extensions (comma-separated) will be inserted as links ([[file]]) instead of embeds (![[file]]). Remember to include the leading dot (e.g., .pdf)."
+        "Files with these extensions will be inserted as links ([[file]]) instead of embeds (![[file]]). Separate extensions with commas (e.g., .pdf, zip, .exe). Leading dot is optional but recommended." // Updated description slightly
       )
       .addTextArea((text: TextAreaComponent) =>
         text
