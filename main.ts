@@ -11,12 +11,14 @@ import {
 
 // Define the interface for plugin settings
 interface InsertNoPreviewSettings {
-  nonPreviewExtensions: string[];
+  globalNonPreviewExtensions: string[]; // Extensions to apply globally
+  yamlNonPreviewExtensions: string[]; // Extensions to apply in YAML frontmatter
 }
 
 // Default settings
 const DEFAULT_SETTINGS: InsertNoPreviewSettings = {
-  nonPreviewExtensions: [".pdf", ".exe", ".zip", ".rar"],
+  globalNonPreviewExtensions: [".pdf", ".exe", ".zip", ".rar"],
+  yamlNonPreviewExtensions: [".pdf", ".docx"], // Example defaults for YAML
 };
 
 // Plugin main class
@@ -40,12 +42,40 @@ export default class InsertNoPreviewPlugin extends Plugin {
     this.addSettingTab(new InsertNoPreviewSettingTab(this.app, this));
   }
 
+  // Check if cursor is in frontmatter
+  private isCursorInFrontmatter(editor: Editor, view: MarkdownView): boolean {
+    const cursor = editor.getCursor();
+    const line = cursor.line;
+    const content = editor.getValue();
+    const lines = content.split("\n");
+
+    // Check if the document starts with frontmatter (starts with ---)
+    if (lines.length === 0 || lines[0].trim() !== "---") {
+      return false;
+    }
+
+    // Find the end of frontmatter (second ---)
+    let inFrontmatter = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === "---") {
+        if (i === 0) {
+          inFrontmatter = true; // Start of frontmatter
+        } else if (inFrontmatter) {
+          inFrontmatter = false; // End of frontmatter
+          return line > 0 && line < i;
+        }
+      }
+    }
+
+    // If no closing ---, frontmatter is incomplete; assume cursor is in it if before end
+    return inFrontmatter && line > 0;
+  }
+
   // Event handler function
   private handleFileInsert = async (
-    // Make the handler async
     evt: DragEvent | ClipboardEvent,
     editor: Editor,
-    view: MarkdownView // Use MarkdownView for context
+    view: MarkdownView
   ) => {
     // Ensure the event contains files
     const files =
@@ -56,13 +86,20 @@ export default class InsertNoPreviewPlugin extends Plugin {
       return; // No files, do not process
     }
 
+    // Determine which extension list to use based on cursor position
+    const isInFrontmatter = this.isCursorInFrontmatter(editor, view);
+    const nonPreviewExtensions = isInFrontmatter
+      ? this.settings.yamlNonPreviewExtensions
+      : this.settings.globalNonPreviewExtensions;
+
     // Prepare normalized extension list for checking
-    const normalizedNonPreviewExtensions =
-      this.settings.nonPreviewExtensions.map((ext) => ext.toLowerCase());
+    const normalizedNonPreviewExtensions = nonPreviewExtensions.map((ext) =>
+      ext.toLowerCase()
+    );
 
     // Check if at least one file needs special handling (non-preview link)
     let hasFileToHandleManually = false;
-    const fileList = Array.from(files); // Convert FileList to Array for easier processing
+    const fileList = Array.from(files);
     for (const file of fileList) {
       const fileName = file.name;
       const fileExt = fileName.includes(".")
@@ -80,12 +117,14 @@ export default class InsertNoPreviewPlugin extends Plugin {
     }
 
     console.log(
-      "InsertNoPreview: Found matching file(s), handling insertion manually."
+      `InsertNoPreview: Found matching file(s), handling insertion manually in ${
+        isInFrontmatter ? "YAML frontmatter" : "global context"
+      }.`
     );
 
-    // Prevent default Obsidian file handling SINCE we are handling it manually
+    // Prevent default Obsidian file handling
     evt.preventDefault();
-    evt.stopPropagation(); // Ensure complete prevention
+    evt.stopPropagation();
 
     // Process all files asynchronously
     const linkPromises = fileList.map(async (file) => {
@@ -95,8 +134,7 @@ export default class InsertNoPreviewPlugin extends Plugin {
         : "";
 
       try {
-        // 1. Determine the available attachment path using fileManager API
-        // This handles settings (including subfolders) and potential name conflicts.
+        // Determine the available attachment path
         const sourcePath = view.file ? view.file.path : "";
         const attachmentPath =
           await this.app.fileManager.getAvailablePathForAttachment(
@@ -107,21 +145,18 @@ export default class InsertNoPreviewPlugin extends Plugin {
           `InsertNoPreview: Determined available attachment path: ${attachmentPath}`
         );
 
-        // 2. Ensure the parent directory for the attachment path exists
+        // Ensure the parent directory exists
         const parentDirectory = attachmentPath.substring(
           0,
           attachmentPath.lastIndexOf("/")
         );
         if (parentDirectory && parentDirectory !== "/") {
-          // Check if it's not the root and exists
           try {
-            // createFolder does nothing if the folder already exists.
             await this.app.vault.createFolder(parentDirectory);
             console.log(
               `InsertNoPreview: Ensured parent directory exists: ${parentDirectory}`
             );
           } catch (err) {
-            // Log error only if it's not 'already exists'
             if (!err.message?.toLowerCase().includes("already exists")) {
               console.error(
                 `InsertNoPreview: Error creating parent directory ${parentDirectory}:`,
@@ -130,7 +165,7 @@ export default class InsertNoPreviewPlugin extends Plugin {
               new Notice(
                 `Error creating attachment folder ${parentDirectory}. See console.`
               );
-              return ""; // Bail out if folder creation fails unexpectedly
+              return "";
             }
           }
         } else if (parentDirectory === "/") {
@@ -142,30 +177,26 @@ export default class InsertNoPreviewPlugin extends Plugin {
             "InsertNoPreview: Could not determine parent directory from path:",
             attachmentPath
           );
-          // Attempt to proceed assuming root or createBinary handles it? Cautious approach: return error.
           new Notice(
             `Could not determine parent folder for ${attachmentPath}.`
           );
           return "";
         }
 
-        // 3. Read file data
+        // Read file data
         const fileData = await file.arrayBuffer();
 
-        // 4. Save the file to the vault using the path determined by fileManager
-        // This path already accounts for potential name conflicts.
+        // Save the file to the vault
         const savedTFile = await this.app.vault.createBinary(
           attachmentPath,
           fileData
         );
         console.log(`InsertNoPreview: Saved file to ${savedTFile.path}`);
 
-        // 5. Generate link text based on extension, using the final saved file name
+        // Generate link text based on extension
         if (fileExt && normalizedNonPreviewExtensions.includes(fileExt)) {
-          // Use .name to include the extension
           return `[[${savedTFile.name}]]`;
         } else {
-          // Use .name to include the extension
           return `![[${savedTFile.name}]]`;
         }
       } catch (error) {
@@ -181,10 +212,10 @@ export default class InsertNoPreviewPlugin extends Plugin {
     // Wait for all file processing to complete
     const linkTexts = await Promise.all(linkPromises);
 
-    // Filter out any empty strings from errors and join with newlines
+    // Filter out empty strings and join with newlines
     const combinedLinkText = linkTexts.filter((text) => text).join("\n");
 
-    // Insert the generated link text at the editor's current cursor position
+    // Insert the generated link text
     if (combinedLinkText) {
       editor.replaceSelection(combinedLinkText);
     }
@@ -192,7 +223,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
 
   onunload() {
     console.log("Unloading InsertNoPreview plugin");
-    // No need to manually remove events registered via this.registerEvent
   }
 
   async loadSettings() {
@@ -218,27 +248,48 @@ class InsertNoPreviewSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Insert No Preview Settings" }); // Updated Title slightly
+    containerEl.createEl("h2", { text: "Insert No Preview Settings" });
 
     new Setting(containerEl)
-      .setName("Non-preview file extensions")
+      .setName("Global non-preview file extensions")
       .setDesc(
-        "Files with these extensions will be inserted as links ([[file]]) instead of embeds (![[file]]). Separate extensions with commas (e.g., .pdf, zip, .exe). Leading dot is optional but recommended." // Updated description slightly
+        "Files with these extensions will be inserted as links ([[file]]) instead of embeds (![[file]]) when pasted outside YAML frontmatter. Separate with commas (e.g., .pdf, .zip, .exe). Leading dot is optional."
       )
       .addTextArea((text: TextAreaComponent) =>
         text
-          .setValue(this.plugin.settings.nonPreviewExtensions.join(", "))
+          .setValue(this.plugin.settings.globalNonPreviewExtensions.join(", "))
           .onChange(async (value: string) => {
-            // Parse user input, remove whitespace, ensure leading dot, and deduplicate
             const extensions = value
-              .split(",") // Split by comma
-              .map((ext: string) => ext.trim()) // Trim leading/trailing whitespace
-              .filter((ext: string) => ext.length > 0) // Filter out empty strings
-              .map((ext: string) => (ext.startsWith(".") ? ext : `.${ext}`)) // Ensure leading dot
-              .map((ext: string) => ext.toLowerCase()); // Convert to lowercase
-            this.plugin.settings.nonPreviewExtensions = [
+              .split(",")
+              .map((ext: string) => ext.trim())
+              .filter((ext: string) => ext.length > 0)
+              .map((ext: string) => (ext.startsWith(".") ? ext : `.${ext}`))
+              .map((ext: string) => ext.toLowerCase());
+            this.plugin.settings.globalNonPreviewExtensions = [
               ...new Set(extensions),
-            ]; // Deduplicate and assign
+            ];
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("YAML frontmatter non-preview file extensions")
+      .setDesc(
+        "Files with these extensions will be inserted as links ([[file]]) instead of embeds (![[file]]) when pasted within YAML frontmatter (between --- lines). Separate with commas (e.g., .pdf, .docx). Leading dot is optional."
+      )
+      .addTextArea((text: TextAreaComponent) =>
+        text
+          .setValue(this.plugin.settings.yamlNonPreviewExtensions.join(", "))
+          .onChange(async (value: string) => {
+            const extensions = value
+              .split(",")
+              .map((ext: string) => ext.trim())
+              .filter((ext: string) => ext.length > 0)
+              .map((ext: string) => (ext.startsWith(".") ? ext : `.${ext}`))
+              .map((ext: string) => ext.toLowerCase());
+            this.plugin.settings.yamlNonPreviewExtensions = [
+              ...new Set(extensions),
+            ];
             await this.plugin.saveSettings();
           })
       );
