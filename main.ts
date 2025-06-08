@@ -18,7 +18,7 @@ interface InsertNoPreviewSettings {
 // Default settings
 const DEFAULT_SETTINGS: InsertNoPreviewSettings = {
   globalNonPreviewExtensions: [".pdf", ".exe", ".zip", ".rar"],
-  yamlNonPreviewExtensions: [".pdf", ".docx"], // Example defaults for YAML
+  yamlNonPreviewExtensions: [".pdf", ".png", ".jpg"], // Example defaults for YAML
 };
 
 // Plugin main class
