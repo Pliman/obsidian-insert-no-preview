@@ -1,4 +1,4 @@
-# Insert No Preview
+# Insert no preview
 
 [中文文档](README_CN.md)
 

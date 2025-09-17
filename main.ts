@@ -34,8 +34,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
       this.app.workspace.on("editor-paste", this.handleFileInsert)
     );
 
-    console.log("Loading InsertNoPreview plugin with event listeners");
-
     // Add settings page
     this.addSettingTab(new InsertNoPreviewSettingTab(this.app, this));
   }
@@ -79,10 +77,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
       return;
     }
 
-    console.log(
-      "InsertNoPreview: Found matching file(s), handling insertion manually."
-    );
-
     // Prevent default Obsidian file handling SINCE we are handling it manually
     evt.preventDefault();
     evt.stopPropagation(); // Ensure complete prevention
@@ -103,9 +97,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
             fileName,
             sourcePath
           );
-        console.log(
-          `InsertNoPreview: Determined available attachment path: ${attachmentPath}`
-        );
 
         // 2. Ensure the parent directory for the attachment path exists
         const parentDirectory = attachmentPath.substring(
@@ -117,9 +108,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
           try {
             // createFolder does nothing if the folder already exists.
             await this.app.vault.createFolder(parentDirectory);
-            console.log(
-              `InsertNoPreview: Ensured parent directory exists: ${parentDirectory}`
-            );
           } catch (err) {
             // Log error only if it's not 'already exists'
             if (!err.message?.toLowerCase().includes("already exists")) {
@@ -134,9 +122,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
             }
           }
         } else if (parentDirectory === "/") {
-          console.log(
-            "InsertNoPreview: Attachment path is in root, no folder creation needed."
-          );
         } else {
           console.warn(
             "InsertNoPreview: Could not determine parent directory from path:",
@@ -158,7 +143,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
           attachmentPath,
           fileData
         );
-        console.log(`InsertNoPreview: Saved file to ${savedTFile.path}`);
 
         // 5. Generate link text based on extension, using the final saved file name
         if (fileExt && normalizedNonPreviewExtensions.includes(fileExt)) {
@@ -191,8 +175,6 @@ export default class InsertNoPreviewPlugin extends Plugin {
   };
 
   onunload() {
-    console.log("Unloading InsertNoPreview plugin");
-    // No need to manually remove events registered via this.registerEvent
   }
 
   async loadSettings() {
