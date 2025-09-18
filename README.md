@@ -12,6 +12,24 @@ When large files (like multi-page PDFs or large images) are embedded in notes, t
 
 This plugin allows users to specify which file extensions should not generate previews when inserted, but instead generate a simple internal link, thus keeping notes clean and easy to use.
 
+## Installation
+
+### Method 1: Using BRAT (Recommended)
+
+1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) if you haven't already
+2. Open the command palette (`Ctrl/Cmd + Shift + P`) and run the command `BRAT: Add a beta plugin for testing`
+3. Enter this repository URL: `https://github.com/Pliman/obsidian-insert-no-preview`
+4. Select the appropriate release version (choose the latest stable version)
+5. Click "Add Plugin" - BRAT will automatically download and install the plugin
+6. Go to Settings → Community Plugins and enable "Insert no preview"
+
+### Method 2: Manual Installation
+
+1. Download the latest release from the [Releases page](https://github.com/Pliman/obsidian-insert-no-preview/releases)
+2. Extract the files to your vault's plugins folder: `<vault>/.obsidian/plugins/insert-no-preview/`
+3. Restart Obsidian
+4. Go to Settings → Community Plugins and enable "Insert no preview"
+
 ## Core Implementation Logic
 
 The plugin listens for file insertion events in the editor, determines the file type, and decides the format of the link to insert based on user configuration.

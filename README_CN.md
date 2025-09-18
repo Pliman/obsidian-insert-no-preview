@@ -10,6 +10,24 @@
 
 此插件允许用户指定哪些文件扩展名在插入时不应生成预览，而是生成一个简洁的内部链接，从而保持笔记的整洁和易用性。
 
+## 安装方法
+
+### 方法1: 使用 BRAT（推荐）
+
+1. 如果还没有安装，请先安装 [BRAT 插件](https://github.com/TfTHacker/obsidian42-brat)
+2. 打开命令面板（`Ctrl/Cmd + Shift + P`）并运行命令 `BRAT: Add a beta plugin for testing`
+3. 输入此仓库的 URL：`https://github.com/Pliman/obsidian-insert-no-preview`
+4. 选择合适的发行版本（建议选择最新的稳定版本）
+5. 点击"Add Plugin" - BRAT 会自动下载并安装插件
+6. 前往 设置 → 第三方插件，启用 "Insert no preview"
+
+### 方法2: 手动安装
+
+1. 从 [Releases 页面](https://github.com/Pliman/obsidian-insert-no-preview/releases) 下载最新版本
+2. 将文件解压到你的库的插件文件夹：`<库目录>/.obsidian/plugins/insert-no-preview/`
+3. 重启 Obsidian
+4. 前往 设置 → 第三方插件，启用 "Insert no preview"
+
 ## 核心实现思路
 
 插件通过监听编辑器中的文件插入事件，判断文件类型，并根据用户配置决定最终插入的链接格式。
