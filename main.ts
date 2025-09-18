@@ -103,35 +103,22 @@ export default class InsertNoPreviewPlugin extends Plugin {
           0,
           attachmentPath.lastIndexOf("/")
         );
-        if (parentDirectory && parentDirectory !== "/") {
-          // Check if it's not the root and exists
-          try {
-            // createFolder does nothing if the folder already exists.
-            await this.app.vault.createFolder(parentDirectory);
-          } catch (err) {
-            // Log error only if it's not 'already exists'
-            if (!err.message?.toLowerCase().includes("already exists")) {
-              console.error(
-                `InsertNoPreview: Error creating parent directory ${parentDirectory}:`,
-                err
-              );
-              new Notice(
-                `Error creating attachment folder ${parentDirectory}. See console.`
-              );
-              return ""; // Bail out if folder creation fails unexpectedly
-            }
+
+        try {
+          // createFolder does nothing if the folder already exists.
+          await this.app.vault.createFolder(parentDirectory || "/");
+        } catch (err) {
+          // Log error only if it's not 'already exists'
+          if (!err.message?.toLowerCase().includes("already exists")) {
+            console.error(
+              `InsertNoPreview: Error creating parent directory ${parentDirectory}:`,
+              err
+            );
+            new Notice(
+              `Error creating attachment folder ${parentDirectory}. See console.`
+            );
+            return ""; // Bail out if folder creation fails unexpectedly
           }
-        } else if (parentDirectory === "/") {
-        } else {
-          console.warn(
-            "InsertNoPreview: Could not determine parent directory from path:",
-            attachmentPath
-          );
-          // Attempt to proceed assuming root or createBinary handles it? Cautious approach: return error.
-          new Notice(
-            `Could not determine parent folder for ${attachmentPath}.`
-          );
-          return "";
         }
 
         // 3. Read file data

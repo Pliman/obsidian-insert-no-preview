@@ -1,6 +1,6 @@
 {
   "name": "obsidian-insert-no-preview",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Obsidian plugin to insert files as links instead of embeds based on extension.",
   "main": "main.js",
   "scripts": {
